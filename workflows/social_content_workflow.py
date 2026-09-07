@@ -2,6 +2,7 @@ from agents.prompt_engineer import PromptEngineer
 from agents.content_generator import ContentGenerator
 from agents.content_reviewer import ContentReviewer
 
+from repositories.social_post_repository import SocialPostRepository
 from models.brand_profile import BrandProfile
 from utils.brand_context import build_brand_context
 
@@ -12,6 +13,7 @@ class SocialContentWorkflow:
         self.prompt_engineer = PromptEngineer()
         self.content_generator = ContentGenerator()
         self.content_reviewer = ContentReviewer()
+        self.social_post_repository = SocialPostRepository()
 
     async def generate(
         self,
@@ -19,6 +21,8 @@ class SocialContentWorkflow:
         description: str = "",
         platform: str = "instagram",
         brand_profile: BrandProfile | None = None,
+        user_id: str | None = None,
+        brand_profile_id: str | None = None,
         max_attempts: int = 3
     ) -> dict:
 
@@ -105,10 +109,61 @@ class SocialContentWorkflow:
                 else:
                     status = "approved"
 
+                # -----------------------------------
+                # SAVE TO SUPABASE
+                # -----------------------------------
+
+                post_data = {
+                    "user_id": user_id,
+                    "brand_profile_id": brand_profile_id,
+
+                    "topic": topic,
+                    "description": description,
+
+                    "headline": content.get("headline"),
+                    "caption": content.get("caption"),
+                    "hashtags": content.get("hashtags", []),
+                    "call_to_action": content.get("call_to_action"),
+                    "image_prompt": content.get("image_prompt"),
+
+                    "platform": platform,
+
+                    "brand_name": (
+                        brand_profile.business_name
+                        if brand_profile
+                        else None
+                    ),
+
+                    "brand_profile": (
+                        brand_profile.model_dump()
+                        if brand_profile
+                        else None
+                    ),
+
+                    "prompt_engineering": prompt_result,
+
+                    "review": review,
+
+                    "attempt_history": attempts,
+
+                    "status": "approved"
+                }
+
+                saved_post = (
+                    self.social_post_repository
+                    .create_post(post_data)
+                )
+
                 return {
                     "success": True,
                     "status": status,
                     "attempt": attempt,
+
+                    "post": (
+                        saved_post[0]
+                        if saved_post
+                        else None
+                    ),
 
                     "brand": (
                         brand_profile.model_dump()
