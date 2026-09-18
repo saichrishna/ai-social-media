@@ -23,7 +23,8 @@ class SocialContentWorkflow:
         brand_profile: BrandProfile | None = None,
         user_id: str | None = None,
         brand_profile_id: str | None = None,
-        max_attempts: int = 3
+        max_attempts: int = 3,
+        social_account_id: str | None = None,
     ) -> dict:
 
         # -----------------------------------
@@ -116,7 +117,7 @@ class SocialContentWorkflow:
                 post_data = {
                     "user_id": user_id,
                     "brand_profile_id": brand_profile_id,
-
+                    "social_account_id": social_account_id,
                     "topic": topic,
                     "description": description,
 

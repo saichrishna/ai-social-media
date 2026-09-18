@@ -8,6 +8,10 @@ from services.publisher_service import (
     PublisherFactory
 )
 
+from repositories.social_account_repository import (
+    SocialAccountRepository
+)
+
 
 class SchedulerService:
 
@@ -16,7 +20,9 @@ class SchedulerService:
         self.social_post_repository = (
             SocialPostRepository()
         )
-
+        self.social_account_repository = (
+            SocialAccountRepository()
+        )
         self.is_running = False
 
 
@@ -43,7 +49,26 @@ class SchedulerService:
             )
 
             for post in due_posts:
+                # -------------------------
+                # GET USER SOCIAL ACCOUNT
+                # -------------------------
 
+                accounts = (
+                    self.social_account_repository
+                    .get_user_platform_account(
+                        user_id=post["user_id"],
+                        platform=post["platform"]
+                    )
+                )
+
+                if not accounts:
+                
+                    raise Exception(
+                        f"No active {post['platform']} "
+                        f"account connected for this user"
+                    )
+
+                social_account = accounts[0]
                 post_id = post["id"]
 
                 try:
@@ -75,7 +100,7 @@ class SchedulerService:
                     # PUBLISH
                     # -------------------------
 
-                    result = await publisher.publish(post)
+                    result = await publisher.publish(post=post, social_account=social_account)
 
                     # -------------------------
                     # SUCCESS

@@ -1,6 +1,7 @@
 from services.supabase_service import SupabaseService
 from datetime import datetime, timezone
 
+
 class SocialPostRepository:
 
     def __init__(self):
@@ -66,10 +67,7 @@ class SocialPostRepository:
             self.supabase
             .table("social_posts")
             .select("*")
-            .eq(
-                "brand_profile_id",
-                brand_profile_id
-            )
+            .eq("brand_profile_id", brand_profile_id)
             .order("created_at", desc=True)
             .execute()
         )
@@ -94,10 +92,7 @@ class SocialPostRepository:
         return response.data
 
 
-    def delete_post(
-        self,
-        post_id: str
-    ):
+    def delete_post(self, post_id: str):
 
         response = (
             self.supabase
@@ -109,12 +104,13 @@ class SocialPostRepository:
 
         return response.data
 
+
     def schedule_post(
-    self,
-    post_id: str,
-    scheduled_at: str,
-    timezone: str
-):
+        self,
+        post_id: str,
+        scheduled_at: str,
+        timezone: str
+    ):
 
         response = (
             self.supabase
@@ -147,12 +143,13 @@ class SocialPostRepository:
 
         return response.data
 
+
     def update_post_status(
-    self,
-    post_id: str,
-    status: str,
-    error_message: str | None = None
-):
+        self,
+        post_id: str,
+        status: str,
+        error_message: str | None = None
+    ):
 
         update_data = {
             "status": status
@@ -171,16 +168,17 @@ class SocialPostRepository:
 
         return response.data
 
-    def mark_post_published(
-    self,
-    post_id: str,
-    external_post_id: str | None = None
-):
 
-        published_at = (
-            datetime.now(timezone.utc).isoformat()
-        )
-    
+    def mark_post_published(
+        self,
+        post_id: str,
+        external_post_id: str | None = None
+    ):
+
+        published_at = datetime.now(
+            timezone.utc
+        ).isoformat()
+
         response = (
             self.supabase
             .table("social_posts")
@@ -193,5 +191,5 @@ class SocialPostRepository:
             .eq("id", post_id)
             .execute()
         )
-    
+
         return response.data

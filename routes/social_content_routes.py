@@ -2,6 +2,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from repositories.brand_profile_repository import BrandProfileRepository
+from repositories.social_account_repository import (
+    SocialAccountRepository
+)
 from workflows.social_content_workflow import SocialContentWorkflow
 from models.brand_profile import BrandProfile
 
@@ -18,6 +21,8 @@ class GenerateSocialContentRequest(BaseModel):
 
     brand_profile_id: str
 
+    social_account_id: str
+
     topic: str
 
     description: str = ""
@@ -31,6 +36,7 @@ brand_profile_repository = BrandProfileRepository()
 
 social_content_workflow = SocialContentWorkflow()
 
+social_account_repository = SocialAccountRepository()
 
 @router.post("/generate")
 async def generate_social_content(
@@ -77,7 +83,45 @@ async def generate_social_content(
                 "additional_instructions"
             ]
         )
+        # -----------------------------------
+        # FETCH SOCIAL ACCOUNT
+        # -----------------------------------
 
+        accounts = (
+            social_account_repository
+            .get_account(
+                request.social_account_id
+            )
+        )
+
+        if not accounts:
+        
+            raise HTTPException(
+                status_code=404,
+                detail="Social account not found"
+            )
+
+        social_account = accounts[0]
+
+        if social_account["user_id"] != request.user_id:
+
+            raise HTTPException(
+            status_code=403,
+            detail=(
+                "This social account does not "
+                "belong to the user"
+            )
+        )
+
+        if ( social_account["platform"].lower()!= request.platform.lower()):
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Selected social account platform "
+                    "does not match requested platform"
+                )
+            )
         # -----------------------------------
         # RUN AI WORKFLOW
         # -----------------------------------
@@ -96,7 +140,10 @@ async def generate_social_content(
 
             brand_profile_id=request.brand_profile_id,
 
-            max_attempts=request.max_attempts
+            max_attempts=request.max_attempts,
+
+            social_account_id=request.social_account_id
+
         )
 
         return result

@@ -16,6 +16,12 @@ from routes.social_post_routes import (
 from routes.social_content_routes import (
     router as social_content_router
 )
+from routes.social_account_routes import (
+    router as social_account_router
+)
+from routes.social_connect_routes import (
+    router as social_connect_router
+)
 from contextlib import asynccontextmanager
 import asyncio
 
@@ -56,6 +62,13 @@ app.include_router(
 
 app.include_router(
     social_post_router
+)
+
+app.include_router(
+    social_account_router
+)
+app.include_router(
+    social_connect_router
 )
 # -----------------------------------
 
