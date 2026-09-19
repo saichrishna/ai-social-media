@@ -16,6 +16,10 @@ class BrandProfileRequest(BaseModel):
 
     target_audience: str = ""
 
+    not_for: str = ""
+
+    desired_outcome: str = ""
+
     services: List[str] = Field(default_factory=list)
 
     preferred_hashtags: List[str] = Field(default_factory=list)
