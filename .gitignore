@@ -1,0 +1,21 @@
+# Secrets and local env
+.env
+.env.*
+!.env.example
+
+# Cursor local model overrides (keep the example tracked)
+.cursor/config/agent-models.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local generated media
+image_generation/generated/

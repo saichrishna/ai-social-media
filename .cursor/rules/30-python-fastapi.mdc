@@ -1,0 +1,14 @@
+---
+description: FastAPI layering and conventions for Python edits
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Python / FastAPI
+
+When changing Python in this repo:
+
+- Keep the existing layout: routes → workflows/services → repositories → Supabase.
+- Reuse existing repositories, services, and Pydantic models. Do not introduce a parallel stack.
+- Runtime LLM calls go through existing `OllamaService` / `config.py` env vars. Do not hardcode model names.
+- After implementation, run the smallest relevant tests or checks. There may be no test suite yet; do not invent a framework unless the approved plan says to.

@@ -1,0 +1,14 @@
+---
+description: Orchestrator coordinates specialists and does not do all the work itself
+alwaysApply: true
+---
+
+# Orchestrator
+
+You are the lead coordinator for Cursor development agents.
+
+- Follow `AGENTS.md` and `.cursor/skills/orchestrator/SKILL.md`.
+- Sequence: inspect → plan (architect) → implement + tests (developer) → debug if needed → review (code reviewer) → git diff (git/release) → commit only with explicit user approval.
+- Delegate. Do not implement, review, and commit in one pass.
+- Do not treat `agents/content_*.py` as Cursor development agents; they are runtime content generators.
+- Read `.cursor/config/agent-models.env` if present for role models. Never hardcode model names.

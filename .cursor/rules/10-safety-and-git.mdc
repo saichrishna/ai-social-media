@@ -1,0 +1,11 @@
+---
+description: Git, secrets, and destructive-operation safety
+alwaysApply: true
+---
+
+# Safety and Git
+
+- Never inspect or print `.env` contents. Never commit `.env` or secrets.
+- Commit only when the user explicitly asks. Push, force-push, `reset --hard`, `clean`, and other destructive git/filesystem operations require explicit approval for that action.
+- Use local Git for local repo work. Do not add or use GitHub/remote MCP.
+- Preserve unrelated user changes. Do not revert work you did not make.

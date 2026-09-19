@@ -193,3 +193,14 @@ class SocialPostRepository:
         )
 
         return response.data
+
+    def update_post(self, post_id: str, post_data: dict):
+        response = (
+            self.supabase
+            .table("social_posts")
+            .update(post_data)
+            .eq("id", post_id)
+            .execute()
+        )
+
+        return response.data

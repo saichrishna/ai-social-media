@@ -1,7 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-
 from services.ollama_service import OllamaService
+from pathlib import Path
+import uuid
 from agents.content_strategist import ContentStrategist
 from agents.prompt_engineer import PromptEngineer
 from agents.content_generator import ContentGenerator
@@ -9,6 +10,11 @@ from agents.content_reviewer import ContentReviewer
 from workflows.social_content_workflow import SocialContentWorkflow
 from models.brand_profile import BrandProfile
 from routes.brand_profile_routes import router as brand_profile_router
+from services.supabase_storage_service import (
+    SupabaseStorageService
+)
+from models.brand_profile import BrandProfile
+from repositories.brand_profile_repository import BrandProfileRepository
 from routes.user_routes import router as user_router
 from routes.social_post_routes import (
     router as social_post_router
@@ -22,12 +28,15 @@ from routes.social_account_routes import (
 from routes.social_connect_routes import (
     router as social_connect_router
 )
+from image_generation.comfyui_service import ComfyUIService
+
 from contextlib import asynccontextmanager
 import asyncio
 
 from services.scheduler_service import SchedulerService
 
 scheduler_service = SchedulerService()
+comfyui_service = ComfyUIService()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -70,6 +79,7 @@ app.include_router(
 app.include_router(
     social_connect_router
 )
+
 # -----------------------------------
 
 # SERVICES / AGENTS
@@ -88,14 +98,18 @@ content_reviewer = ContentReviewer()
 
 social_content_workflow = SocialContentWorkflow()
 
+supabase_storage = SupabaseStorageService()
 
-
+brand_repository = BrandProfileRepository()
 
 # -----------------------------------
 
 # REQUEST MODELS
 
 # -----------------------------------
+
+class ImageGenerationRequest(BaseModel):
+    post_id: str
 
 class ChatRequest(BaseModel):
     question: str
@@ -123,10 +137,11 @@ class ContentReviewerRequest(BaseModel):
     platform: str = "instagram"
 
 class SocialContentRequest(BaseModel):
+    user_id: str
+    brand_profile_id: str
     topic: str
     description: str = ""
     platform: str = "instagram"
-    brand_profile: BrandProfile | None = None
 
 # -----------------------------------
 
@@ -355,6 +370,67 @@ async def review_content(request: ContentReviewerRequest):
         detail=str(error)
     )
 
+@app.post("/api/generate-image")
+async def generate_image(request: ImageGenerationRequest):
+
+    try:
+
+        # 1. Get the social post
+        post = supabase_storage.get_social_post(
+            request.post_id
+        )
+
+        # 2. Make sure the post has an image prompt
+        image_prompt = post.get("image_prompt")
+
+        if not image_prompt:
+            raise ValueError(
+                "This social post does not have an image_prompt."
+            )
+
+        # 3. Generate image using ComfyUI
+        image_path = comfyui_service.generate_image(
+            prompt=image_prompt
+        )
+
+        # 4. Create a unique Storage path
+        filename = Path(image_path).name
+
+        storage_path = (
+            f"generated/"
+            f"{request.post_id}/"
+            f"{uuid.uuid4()}_{filename}"
+        )
+
+        # 5. Upload to Supabase Storage
+        uploaded_path = (
+            supabase_storage.upload_image(
+                local_path=image_path,
+                storage_path=storage_path
+            )
+        )
+
+        # 6. Link image to the social post
+        updated_post = (
+            supabase_storage.update_post_image(
+                post_id=request.post_id,
+                image_path=uploaded_path
+            )
+        )
+
+        return {
+            "success": True,
+            "post_id": request.post_id,
+            "image_path": uploaded_path,
+            "post": updated_post
+        }
+
+    except Exception as error:
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
 # -----------------------------------
 
 # FULL SOCIAL CONTENT WORKFLOW
@@ -362,24 +438,47 @@ async def review_content(request: ContentReviewerRequest):
 # -----------------------------------
 
 @app.post("/api/generate-social-content")
-async def generate_social_content(request: SocialContentRequest):
+async def generate_social_content(
+    request: SocialContentRequest
+):
     try:
-    
-        result = await social_content_workflow.generate(
-        
-            topic=request.topic,
-    
-            description=request.description,
-    
-            platform=request.platform,
-    
-            brand_profile=request.brand_profile
+
+        # Get brand profile belonging to this user
+        brand_data = brand_repository.get_profile(
+            profile_id=request.brand_profile_id,
+            user_id=request.user_id
         )
-    
+
+        if not brand_data:
+            raise HTTPException(
+                status_code=404,
+                detail="Brand profile not found for this user"
+            )
+
+        brand_profile = BrandProfile(
+            **brand_data[0]
+        )
+
+        result = await social_content_workflow.generate(
+            topic=request.topic,
+            description=request.description,
+            platform=request.platform,
+
+            brand_profile=brand_profile,
+
+            user_id=request.user_id,
+            brand_profile_id=request.brand_profile_id,
+
+            social_account_id=None
+        )
+
         return result
-    
+
+    except HTTPException:
+        raise
+
     except Exception as error:
-    
+
         raise HTTPException(
             status_code=500,
             detail=str(error)
