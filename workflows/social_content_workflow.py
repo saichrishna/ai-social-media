@@ -27,6 +27,7 @@ class SocialContentWorkflow:
         brand_profile_id: str | None = None,
         max_attempts: int = 3,
         social_account_id: str | None = None,
+        brand_dna_context: str | None = None,
     ) -> dict:
 
         # -----------------------------------
@@ -36,6 +37,13 @@ class SocialContentWorkflow:
         brand_context = build_brand_context(
             brand_profile
         )
+
+        if brand_dna_context and brand_dna_context.strip():
+            brand_context = (
+                brand_context
+                + "\n\n"
+                + brand_dna_context.strip()
+            )
 
         # -----------------------------------
         # STEP 1: PROMPT ENGINEERING

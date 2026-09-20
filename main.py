@@ -10,6 +10,7 @@ from agents.content_reviewer import ContentReviewer
 from workflows.social_content_workflow import SocialContentWorkflow
 from models.brand_profile import BrandProfile
 from routes.brand_profile_routes import router as brand_profile_router
+from routes.brand_dna_routes import router as brand_dna_router
 from services.supabase_storage_service import (
     SupabaseStorageService
 )
@@ -60,6 +61,10 @@ lifespan=lifespan
 
 app.include_router(
     brand_profile_router
+)
+
+app.include_router(
+    brand_dna_router
 )
 
 app.include_router(user_router)
