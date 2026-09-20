@@ -38,6 +38,27 @@ class InterviewSessionRepository:
 
         return response.data
 
+    def list_recent_sessions(
+        self,
+        brand_profile_id: str,
+        user_id: str,
+        *,
+        limit: int = 10,
+    ):
+
+        response = (
+            self.supabase
+            .table("interview_sessions")
+            .select("*")
+            .eq("brand_profile_id", brand_profile_id)
+            .eq("user_id", user_id)
+            .order("updated_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+
+        return response.data or []
+
     def get_active_session(
         self,
         brand_profile_id: str,

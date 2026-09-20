@@ -9,6 +9,12 @@ from repositories.voice_sample_repository import (
 from repositories.interview_answer_repository import (
     InterviewAnswerRepository
 )
+from repositories.interview_session_repository import (
+    InterviewSessionRepository
+)
+from services.interview_session_sync import (
+    backfill_interview_answers_from_sessions,
+)
 
 from models.brand_profile_request import (
     BrandProfileRequest
@@ -38,6 +44,8 @@ voice_sample_repository = VoiceSampleRepository()
 interview_answer_repository = (
     InterviewAnswerRepository()
 )
+
+interview_session_repository = InterviewSessionRepository()
 
 
 VOICE_SAMPLE_SOURCES = {"paste", "audio"}
@@ -406,6 +414,23 @@ async def list_interview_answers(
             user_id=user_id
         )
     )
+
+    if not result:
+        sessions = interview_session_repository.list_recent_sessions(
+            profile_id,
+            user_id,
+        )
+        backfill_interview_answers_from_sessions(
+            brand_profile_id=profile_id,
+            user_id=user_id,
+            sessions=sessions,
+            answer_repository=interview_answer_repository,
+            sample_repository=voice_sample_repository,
+        )
+        result = interview_answer_repository.get_answers(
+            brand_profile_id=profile_id,
+            user_id=user_id,
+        )
 
     return {
         "success": True,

@@ -29,6 +29,10 @@ from models.brand_dna_models import (
 from models.brand_profile import BrandProfile
 
 from services.interview_prep_service import InterviewPrepService
+from services.interview_session_sync import (
+    build_interview_transcript,
+    sync_session_to_your_words,
+)
 from services.speech_to_text_service import SpeechToTextService
 from services.voice_study_service import VoiceStudyService
 from services.brand_dna_service import BrandDnaService
@@ -117,7 +121,8 @@ def _next_unanswered_question(questions: list) -> dict | None:
 async def start_interview_session(
     profile_id: str,
     payload: StartInterviewSessionRequest,
-    user_id: str | None = None
+    user_id: str | None = None,
+    force_new: bool = False,
 ):
 
     owner_id = _require_user_id(
@@ -135,10 +140,31 @@ async def start_interview_session(
         owner_id
     )
 
+    if active and force_new:
+        from datetime import datetime, timezone
+
+        closing = active[0]
+        sync_session_to_your_words(
+            closing,
+            owner_id=owner_id,
+            profile_id=profile_id,
+            answer_repository=answer_repository,
+            sample_repository=sample_repository,
+        )
+        session_repository.update_session(
+            closing["id"],
+            {
+                "status": "completed",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        active = None
+
     if active:
         return {
             "success": True,
-            "interview_session": active[0]
+            "interview_session": active[0],
+            "resumed": True,
         }
 
     plan = await prep_service.build_session_plan(
@@ -165,6 +191,7 @@ async def start_interview_session(
     return {
         "success": True,
         "interview_session": result[0],
+        "resumed": False,
         "stt_available": stt_service.is_available()
     }
 
@@ -186,6 +213,42 @@ async def get_active_interview_session(
         "success": True,
         "interview_session": active[0] if active else None,
         "stt_available": stt_service.is_available()
+    }
+
+
+@router.get(
+    "/{profile_id}/interview-sessions/{session_id}"
+)
+async def get_interview_session(
+    profile_id: str,
+    session_id: str,
+    user_id: str,
+):
+
+    if session_id == "active":
+        raise HTTPException(
+            status_code=404,
+            detail="Interview session not found",
+        )
+
+    _require_owned_profile(profile_id, user_id)
+
+    rows = session_repository.get_session(
+        session_id,
+        profile_id,
+        user_id,
+    )
+
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail="Interview session not found",
+        )
+
+    return {
+        "success": True,
+        "interview_session": rows[0],
+        "stt_available": stt_service.is_available(),
     }
 
 
@@ -264,18 +327,10 @@ async def save_interview_step_answer(
             detail="Unknown question_key"
         )
 
-    transcript = session.get("transcript") or ""
-    transcript = (
-        transcript
-        + f"\n\nQ ({payload.question_key}): "
-        + answer_text
-    ).strip()
-
     patch = session_repository.update_session(
         session_id,
         {
             "questions": updated_questions,
-            "transcript": transcript
         }
     )
 
@@ -376,38 +431,19 @@ async def complete_interview_session(
 
     transcript = (
         payload.transcript.strip()
+        or build_interview_transcript({**session, "questions": questions})
         or session.get("transcript")
         or ""
     ).strip()
 
-    answer_rows = []
-
-    for question in questions:
-        answer_text = (question.get("answer_text") or "").strip()
-        if not answer_text:
-            continue
-        source = question.get("source") or "type"
-        if source not in {"type", "audio"}:
-            source = "type"
-        answer_rows.append({
-            "user_id": owner_id,
-            "brand_profile_id": profile_id,
-            "question_key": question["question_key"],
-            "question_text": question.get("question_text") or "",
-            "answer_text": answer_text,
-            "source": source
-        })
-
-    if answer_rows:
-        answer_repository.upsert_answers(answer_rows)
-
-    if transcript:
-        sample_repository.create_sample({
-            "user_id": owner_id,
-            "brand_profile_id": profile_id,
-            "source": "audio",
-            "content": transcript
-        })
+    sync_session_to_your_words(
+        {**session, "questions": questions},
+        owner_id=owner_id,
+        profile_id=profile_id,
+        answer_repository=answer_repository,
+        sample_repository=sample_repository,
+        transcript=transcript,
+    )
 
     from datetime import datetime, timezone
 

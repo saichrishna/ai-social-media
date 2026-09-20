@@ -57,10 +57,25 @@ async def get_user_posts(
             )
         )
 
+        enriched = []
+
+        for post in posts:
+            row = dict(post)
+            image_path = row.get("image_url")
+            if image_path:
+                row["image_signed_url"] = (
+                    supabase_storage
+                    .create_image_signed_url(
+                        storage_path=image_path,
+                        expires_in=3600
+                    )
+                )
+            enriched.append(row)
+
         return {
             "success": True,
-            "count": len(posts),
-            "data": posts
+            "count": len(enriched),
+            "data": enriched
         }
 
     except Exception as error:
