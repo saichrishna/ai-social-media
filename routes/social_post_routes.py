@@ -1,10 +1,12 @@
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
 from repositories.social_post_repository import (
     SocialPostRepository
 )
-from datetime import datetime
-from pydantic import BaseModel
+from services.post_actions import allowed_actions
 from services.supabase_storage_service import (
     SupabaseStorageService
 )
@@ -124,10 +126,14 @@ async def get_post(post_id: str):
                 )
             )
 
+        review = post.get("review")
+
         return {
             "success": True,
             "post": post,
-            "image_signed_url": image_signed_url
+            "image_signed_url": image_signed_url,
+            "review": review,
+            "allowed_actions": allowed_actions(post.get("status")),
         }
 
     except HTTPException:

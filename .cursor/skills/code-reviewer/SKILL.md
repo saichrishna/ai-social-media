@@ -23,6 +23,7 @@ Read-only. Report findings. Do not edit.
 - [ ] Runtime content agents were not confused with Cursor agents
 - [ ] Tests/checks are adequate; failures are not ignored
 - [ ] Regression risk called out
+- [ ] User-visible API/UI: no fake progress, no leaked model names, no contract that forces dual brand context or dishonest readiness
 
 ## Output
 

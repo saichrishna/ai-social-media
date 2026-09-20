@@ -21,6 +21,7 @@ Implement the approved plan. Nothing else.
 - Do not invent architecture that the plan did not approve.
 - Do not hardcode model names; use existing env/config for runtime LLM calls.
 - Leave runtime content agents (`agents/content_*.py`) alone unless the plan names them.
+- If the plan includes sibling UI (`../ai-social-media-ui`), follow that repo’s `.cursor/skills/next-gen-ux/SKILL.md`. Do not invent API payloads to make the UI look ready.
 
 ## After coding
 

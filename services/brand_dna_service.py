@@ -9,7 +9,9 @@ from repositories.channel_preference_repository import (
 )
 
 
-MIN_CORPUS_ITEMS = 3
+from services.brand_setup_status import MIN_MATERIAL_ITEMS
+
+MIN_CORPUS_ITEMS = MIN_MATERIAL_ITEMS
 
 
 class BrandDnaService:

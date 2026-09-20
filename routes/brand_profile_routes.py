@@ -29,6 +29,10 @@ from models.interview_answer import (
 from utils.promise_completeness import (
     promise_warnings
 )
+from services.brand_setup_status import (
+    enrich_profile_with_setup,
+    material_counts_from_rows,
+)
 
 
 router = APIRouter(
@@ -168,10 +172,17 @@ async def get_user_brand_profiles(
         .get_user_profiles(user_id)
     )
 
+    samples = voice_sample_repository.list_content_by_user(user_id)
+    answers = interview_answer_repository.list_content_by_user(user_id)
+    material_by_profile = material_counts_from_rows(samples, answers)
+
     return {
         "success": True,
         "brand_profiles": [
-            _with_promise_warnings(profile)
+            enrich_profile_with_setup(
+                _with_promise_warnings(profile),
+                material_by_profile.get(str(profile.get("id")), 0),
+            )
             for profile in result
         ]
     }
@@ -219,11 +230,30 @@ async def update_brand_profile(
     profile: BrandProfileRequest
 ):
 
+    payload = profile.model_dump()
+    target = str(payload.get("target_audience") or "").strip()
+    not_for = str(payload.get("not_for") or "").strip()
+
+    if target or not_for:
+        field_errors: dict[str, str] = {}
+        if not target:
+            field_errors["target_audience"] = "Who you help is required."
+        if not not_for:
+            field_errors["not_for"] = "Who you are not for is required."
+        if field_errors:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "success": False,
+                    "fields": field_errors,
+                },
+            )
+
     result = (
         brand_repository
         .update_profile(
             profile_id,
-            profile.model_dump()
+            payload
         )
     )
 

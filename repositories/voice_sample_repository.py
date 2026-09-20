@@ -36,3 +36,15 @@ class VoiceSampleRepository:
         )
 
         return response.data
+
+    def list_content_by_user(self, user_id: str):
+
+        response = (
+            self.supabase
+            .table("voice_samples")
+            .select("brand_profile_id, content")
+            .eq("user_id", user_id)
+            .execute()
+        )
+
+        return response.data or []

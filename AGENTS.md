@@ -17,6 +17,8 @@ These agents write and review **software** in this repo. They are coordinated by
 
 Detailed checklists: `.cursor/skills/<role>/SKILL.md`.
 
+Frontend UX is a **sibling repo** (`../ai-social-media-ui`). Orchestrator must apply that repo’s next-gen UX skill for user-visible work: invisible system depth, one obvious next step. Do not mix Cursor UI agents with runtime `agents/content_*.py`.
+
 ## Runtime content agents (do not treat as Cursor agents)
 
 `agents/content_strategist.py`, `agents/prompt_engineer.py`, `agents/content_generator.py`, and `agents/content_reviewer.py` generate **social media content** via Ollama at runtime. They are product code. Do not replace, rename, or “upgrade” them into Cursor development agents.

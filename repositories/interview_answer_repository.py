@@ -42,3 +42,15 @@ class InterviewAnswerRepository:
         )
 
         return response.data
+
+    def list_content_by_user(self, user_id: str):
+
+        response = (
+            self.supabase
+            .table("interview_answers")
+            .select("brand_profile_id, answer_text")
+            .eq("user_id", user_id)
+            .execute()
+        )
+
+        return response.data or []

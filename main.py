@@ -35,6 +35,11 @@ from contextlib import asynccontextmanager
 import asyncio
 
 from services.scheduler_service import SchedulerService
+from services.brand_dna_service import BrandDnaService
+from services.brand_setup_status import (
+    derive_setup_status,
+    user_safe_not_ready_message,
+)
 
 scheduler_service = SchedulerService()
 comfyui_service = ComfyUIService()
@@ -106,6 +111,8 @@ social_content_workflow = SocialContentWorkflow()
 supabase_storage = SupabaseStorageService()
 
 brand_repository = BrandProfileRepository()
+
+brand_dna_service = BrandDnaService()
 
 # -----------------------------------
 
@@ -460,8 +467,20 @@ async def generate_social_content(
                 detail="Brand profile not found for this user"
             )
 
+        profile_row = brand_data[0]
+        material_count = brand_dna_service.corpus_item_count(
+            request.brand_profile_id,
+            request.user_id,
+        )
+        setup_status = derive_setup_status(profile_row, material_count)
+        if setup_status != "ready_to_draft":
+            raise HTTPException(
+                status_code=400,
+                detail=user_safe_not_ready_message(setup_status),
+            )
+
         brand_profile = BrandProfile(
-            **brand_data[0]
+            **profile_row
         )
 
         result = await social_content_workflow.generate(

@@ -17,6 +17,7 @@ Produce a concise plan the developer can execute without redesigning the repo.
 2. Inspect `git status` so existing user work is preserved.
 3. Read the relevant existing modules (routes, workflows, services, repositories, models). Do not scan secrets or `.env`.
 4. Identify the smallest file set that can satisfy the requirement.
+5. If the change is user-visible or unblocks UI, read `../ai-social-media-ui/.cursor/skills/next-gen-ux/SKILL.md` and `../ai-social-media-ui/docs/UX_DESIGN_SYSTEM_REVIEW.md`. Prefer additive API fields the UI can tell the truth with (`setup_status`, field errors, `allowed_actions`). Do not design fake progress or dual client state machines.
 
 ## Plan format
 
@@ -29,6 +30,7 @@ Produce a concise plan the developer can execute without redesigning the repo.
 ## Approach (preserve existing layers)
 ## Risks / unknowns
 ## Test plan
+## UI / next-gen impact (or none)
 ## Out of scope
 ```
 
