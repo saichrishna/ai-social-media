@@ -133,3 +133,12 @@ Rules:
             }
             for key in CANONICAL_KEYS
         ]
+
+    def build_mini_session_plan(
+        self,
+        brand_profile: dict,
+        cold_open_answer: str = "",
+    ) -> dict:
+        from services.interview_plans import build_mini_session_plan
+
+        return build_mini_session_plan(brand_profile, cold_open_answer)

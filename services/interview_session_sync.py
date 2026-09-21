@@ -1,13 +1,11 @@
-"""Copy voice interview session JSON into durable Your words tables."""
+"""Copy voice interview session JSON into append-only corpus_items."""
 
 from __future__ import annotations
 
-from repositories.interview_answer_repository import InterviewAnswerRepository
-from repositories.voice_sample_repository import VoiceSampleRepository
 
 
 def build_interview_transcript(session: dict) -> str:
-    """Plain transcript for samples — question line then answer, no internal keys."""
+    """Plain transcript for display — question line then answer."""
 
     parts: list[str] = []
     cold = (session.get("transcript") or "").strip().split("\n")[0].strip()
@@ -27,12 +25,80 @@ def build_interview_transcript(session: dict) -> str:
     return "\n\n".join(parts).strip()
 
 
+def sync_session_to_your_words(
+    session: dict,
+    *,
+    owner_id: str,
+    profile_id: str,
+    corpus_service: CorpusService | None = None,
+    session_id: str | None = None,
+    capture_mode: str | None = None,
+    **_legacy_kwargs,
+) -> int:
+    """
+    Append answered questions to corpus_items (no interview_answers upsert).
+    Returns count of corpus rows inserted.
+    """
+
+    if corpus_service is None:
+        from services.corpus_service import CorpusService
+
+        service = CorpusService()
+    else:
+        service = corpus_service
+    resolved_session_id = session_id or session.get("id")
+
+    return service.append_from_session(
+        session,
+        owner_id=owner_id,
+        profile_id=profile_id,
+        session_id=str(resolved_session_id) if resolved_session_id else None,
+        capture_mode=capture_mode,
+    )
+
+
+def backfill_interview_answers_from_sessions(
+    *,
+    brand_profile_id: str,
+    user_id: str,
+    sessions: list[dict],
+    corpus_service=None,
+    **_legacy_kwargs,
+) -> bool:
+    """
+    Legacy hook: migrate empty corpus from old tables / newest session.
+    """
+
+    if corpus_service is None:
+        from services.corpus_service import CorpusService
+
+        service = CorpusService()
+    else:
+        service = corpus_service
+    if service.backfill_from_legacy_if_empty(brand_profile_id, user_id):
+        return True
+
+    for session in sessions:
+        if sync_session_to_your_words(
+            session,
+            owner_id=user_id,
+            profile_id=brand_profile_id,
+            corpus_service=service,
+            session_id=session.get("id"),
+        ):
+            return True
+
+    return False
+
+
 def answer_rows_from_session(
     session: dict,
     *,
     owner_id: str,
     profile_id: str,
 ) -> list[dict]:
+    """Kept for tests and typed-answer mapping helpers."""
+
     rows: list[dict] = []
 
     for question in session.get("questions") or []:
@@ -57,86 +123,3 @@ def answer_rows_from_session(
         )
 
     return rows
-
-
-def sync_session_to_your_words(
-    session: dict,
-    *,
-    owner_id: str,
-    profile_id: str,
-    answer_repository: InterviewAnswerRepository,
-    sample_repository: VoiceSampleRepository | None = None,
-    transcript: str | None = None,
-    include_voice_sample: bool = True,
-) -> int:
-    """
-    Upsert per-question rows into interview_answers and optionally append
-    a combined transcript voice sample. Returns count of answer rows synced.
-    """
-
-    rows = answer_rows_from_session(
-        session,
-        owner_id=owner_id,
-        profile_id=profile_id,
-    )
-
-    if rows:
-        answer_repository.upsert_answers(rows)
-
-    if include_voice_sample and sample_repository is not None:
-        merged = (
-            (transcript or "").strip()
-            or build_interview_transcript(session)
-            or (session.get("transcript") or "").strip()
-        ).strip()
-        if merged:
-            sample_repository.create_sample(
-                {
-                    "user_id": owner_id,
-                    "brand_profile_id": profile_id,
-                    "source": "audio",
-                    "content": merged,
-                }
-            )
-
-    return len(rows)
-
-
-def backfill_interview_answers_from_sessions(
-    *,
-    brand_profile_id: str,
-    user_id: str,
-    sessions: list[dict],
-    answer_repository: InterviewAnswerRepository,
-    sample_repository: VoiceSampleRepository | None = None,
-) -> bool:
-    """
-    If interview_answers is empty, copy from the newest session that has
-    at least one answered question. Returns True when a sync ran.
-    """
-
-    existing = answer_repository.get_answers(
-        brand_profile_id=brand_profile_id,
-        user_id=user_id,
-    )
-    if existing:
-        return False
-
-    for session in sessions:
-        if not answer_rows_from_session(
-            session,
-            owner_id=user_id,
-            profile_id=brand_profile_id,
-        ):
-            continue
-        sync_session_to_your_words(
-            session,
-            owner_id=user_id,
-            profile_id=brand_profile_id,
-            answer_repository=answer_repository,
-            sample_repository=sample_repository,
-            include_voice_sample=True,
-        )
-        return True
-
-    return False

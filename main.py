@@ -483,6 +483,15 @@ async def generate_social_content(
             **profile_row
         )
 
+        platform = (request.platform or "instagram").strip().lower()
+        dna_context = brand_dna_service.build_generation_context(
+            profile_row,
+            request.brand_profile_id,
+            request.user_id,
+            platform,
+            topic=(request.topic or "").strip(),
+        )
+
         result = await social_content_workflow.generate(
             topic=request.topic,
             description=request.description,
@@ -493,7 +502,8 @@ async def generate_social_content(
             user_id=request.user_id,
             brand_profile_id=request.brand_profile_id,
 
-            social_account_id=None
+            social_account_id=None,
+            brand_dna_context=dna_context,
         )
 
         return result

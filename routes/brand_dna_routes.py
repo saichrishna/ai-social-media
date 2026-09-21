@@ -148,8 +148,8 @@ async def start_interview_session(
             closing,
             owner_id=owner_id,
             profile_id=profile_id,
-            answer_repository=answer_repository,
-            sample_repository=sample_repository,
+            session_id=closing.get("id"),
+            capture_mode=closing.get("capture_mode"),
         )
         session_repository.update_session(
             closing["id"],
@@ -167,10 +167,27 @@ async def start_interview_session(
             "resumed": True,
         }
 
-    plan = await prep_service.build_session_plan(
-        profile,
-        payload.cold_open_answer.strip()
-    )
+    mode = (payload.mode or "full").strip().lower()
+    if mode not in {"full", "mini"}:
+        raise HTTPException(
+            status_code=400,
+            detail="mode must be full or mini",
+        )
+
+    cold_open = payload.cold_open_answer.strip()
+
+    if mode == "mini":
+        from services.interview_plans import build_mini_session_plan
+
+        plan = build_mini_session_plan(
+            profile,
+            cold_open,
+        )
+    else:
+        plan = await prep_service.build_session_plan(
+            profile,
+            cold_open,
+        )
 
     result = session_repository.create_session({
         "user_id": owner_id,
@@ -178,8 +195,8 @@ async def start_interview_session(
         "status": "in_progress",
         "prep_brief": plan["prep_brief"],
         "questions": plan["questions"],
-        "transcript": payload.cold_open_answer.strip(),
-        "follow_up_used": False
+        "transcript": cold_open or f"[{mode} capture]",
+        "follow_up_used": False,
     })
 
     if not result:
@@ -440,9 +457,8 @@ async def complete_interview_session(
         {**session, "questions": questions},
         owner_id=owner_id,
         profile_id=profile_id,
-        answer_repository=answer_repository,
-        sample_repository=sample_repository,
-        transcript=transcript,
+        session_id=session_id,
+        capture_mode=session.get("capture_mode"),
     )
 
     from datetime import datetime, timezone
@@ -654,7 +670,8 @@ async def generate_brand_draft(
         profile_row,
         profile_id,
         payload.user_id,
-        platform
+        platform,
+        topic=topic,
     )
 
     try:

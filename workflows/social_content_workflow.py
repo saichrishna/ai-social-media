@@ -295,7 +295,13 @@ Do not invent:
             "last_review": review
         }
 
-    async def regenerate(self, post_id: str,brand_profile: BrandProfile,max_attempts: int = 3) -> dict:
+    async def regenerate(
+        self,
+        post_id: str,
+        brand_profile: BrandProfile,
+        max_attempts: int = 3,
+        brand_dna_context: str | None = None,
+    ) -> dict:
 
         posts = self.social_post_repository.get_post(post_id)
 
@@ -314,6 +320,13 @@ Do not invent:
         brand_context = build_brand_context(
             brand_profile
         )
+
+        if brand_dna_context and brand_dna_context.strip():
+            brand_context = (
+                brand_context
+                + "\n\n"
+                + brand_dna_context.strip()
+            )
 
         prompt_result = await self.prompt_engineer.generate_prompt(
             topic=topic,

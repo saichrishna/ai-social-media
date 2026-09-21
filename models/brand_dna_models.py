@@ -8,6 +8,8 @@ class StartInterviewSessionRequest(BaseModel):
 
     cold_open_answer: str = ""
 
+    mode: str = "full"
+
 
 class InterviewAnswerStepRequest(BaseModel):
 

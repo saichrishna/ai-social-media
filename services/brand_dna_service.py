@@ -1,12 +1,9 @@
 from repositories.brand_profile_repository import BrandProfileRepository
-from repositories.voice_sample_repository import VoiceSampleRepository
-from repositories.interview_answer_repository import (
-    InterviewAnswerRepository
-)
 from repositories.voice_study_repository import VoiceStudyRepository
 from repositories.channel_preference_repository import (
     ChannelPreferenceRepository
 )
+from services.corpus_service import CorpusService
 
 
 from services.brand_setup_status import MIN_MATERIAL_ITEMS
@@ -18,8 +15,7 @@ class BrandDnaService:
 
     def __init__(self):
         self.brand_repository = BrandProfileRepository()
-        self.sample_repository = VoiceSampleRepository()
-        self.answer_repository = InterviewAnswerRepository()
+        self.corpus_service = CorpusService()
         self.study_repository = VoiceStudyRepository()
         self.channel_repository = ChannelPreferenceRepository()
 
@@ -42,32 +38,21 @@ class BrandDnaService:
     def gather_corpus(
         self,
         brand_profile_id: str,
-        user_id: str
+        user_id: str,
+        *,
+        topic: str = "",
     ) -> list[str]:
 
-        samples = self.sample_repository.get_samples(
+        self.corpus_service.backfill_from_legacy_if_empty(
             brand_profile_id,
-            user_id
+            user_id,
         )
 
-        answers = self.answer_repository.get_answers(
+        return self.corpus_service.select_chunks_for_generation(
             brand_profile_id,
-            user_id
+            user_id,
+            topic=topic,
         )
-
-        chunks: list[str] = []
-
-        for sample in samples:
-            content = (sample.get("content") or "").strip()
-            if content:
-                chunks.append(content)
-
-        for answer in answers:
-            text = (answer.get("answer_text") or "").strip()
-            if text:
-                chunks.append(text)
-
-        return chunks
 
     def corpus_item_count(
         self,
@@ -75,10 +60,15 @@ class BrandDnaService:
         user_id: str
     ) -> int:
 
-        return len(self.gather_corpus(
+        self.corpus_service.backfill_from_legacy_if_empty(
             brand_profile_id,
-            user_id
-        ))
+            user_id,
+        )
+
+        return self.corpus_service.material_count(
+            brand_profile_id,
+            user_id,
+        )
 
     def has_minimum_corpus(
         self,
@@ -100,50 +90,45 @@ class BrandDnaService:
         user_id: str
     ) -> list[dict]:
 
-        answers = self.answer_repository.get_answers(
+        self.corpus_service.backfill_from_legacy_if_empty(
             brand_profile_id,
-            user_id
+            user_id,
+        )
+
+        items = self.corpus_service.list_items(
+            brand_profile_id,
+            user_id,
         )
 
         topics = []
+        seen_themes: set[str | None] = set()
 
-        for answer in answers:
-            text = (answer.get("answer_text") or "").strip()
-            if not text:
-                continue
-            topics.append({
-                "topic": text[:160],
-                "source": "interview_answer",
-                "question_key": answer.get("question_key")
-            })
-
-        if topics:
-            return topics[:8]
-
-        samples = self.sample_repository.get_samples(
-            brand_profile_id,
-            user_id
-        )
-
-        for sample in samples:
-            content = (sample.get("content") or "").strip()
+        for item in items:
+            content = (item.get("content") or "").strip()
             if not content:
                 continue
-            first_line = content.split("\n")[0][:160]
+            theme = item.get("theme")
+            if theme in seen_themes and theme:
+                continue
+            seen_themes.add(theme)
             topics.append({
-                "topic": first_line,
-                "source": "voice_sample",
-                "question_key": None
+                "topic": content[:160],
+                "source": item.get("source") or "corpus_item",
+                "question_key": theme,
             })
+            if len(topics) >= 8:
+                break
 
-        return topics[:8]
+        return topics
 
     def build_generation_context(
         self,
         brand_profile: dict,
         brand_profile_id: str,
         user_id: str,
-        platform: str
+        platform: str,
+        *,
+        topic: str = "",
     ) -> str:
 
         sections = []
@@ -169,12 +154,13 @@ class BrandDnaService:
 
         corpus = self.gather_corpus(
             brand_profile_id,
-            user_id
+            user_id,
+            topic=topic,
         )
 
         if corpus:
             sections.append("\nUSER SOURCE MATERIAL (ground truth — do not invent beyond this):")
-            for index, chunk in enumerate(corpus[:12], start=1):
+            for index, chunk in enumerate(corpus, start=1):
                 sections.append(f"[{index}] {chunk}")
 
         studies = self.study_repository.get_latest_study(

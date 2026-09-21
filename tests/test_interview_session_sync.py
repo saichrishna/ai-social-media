@@ -51,10 +51,10 @@ def test_answer_rows_from_session_skips_empty():
     assert rows[0]["answer_text"] == "yes"
 
 
-def test_backfill_runs_when_answers_empty():
-    answers = MagicMock()
-    answers.get_answers.side_effect = [[], [{"question_key": "a"}]]
-    samples = MagicMock()
+def test_backfill_runs_when_corpus_empty():
+    corpus = MagicMock()
+    corpus.backfill_from_legacy_if_empty.return_value = False
+    corpus.append_from_session.return_value = 1
 
     session = {
         "questions": [
@@ -72,18 +72,16 @@ def test_backfill_runs_when_answers_empty():
         brand_profile_id="brand-1",
         user_id="user-1",
         sessions=[session],
-        answer_repository=answers,
-        sample_repository=samples,
+        corpus_service=corpus,
     )
 
     assert ran is True
-    answers.upsert_answers.assert_called_once()
-    samples.create_sample.assert_called_once()
+    corpus.append_from_session.assert_called()
 
 
-def test_sync_session_upserts_and_sample():
-    answers = MagicMock()
-    samples = MagicMock()
+def test_sync_session_appends_corpus():
+    corpus = MagicMock()
+    corpus.append_from_session.return_value = 1
     session = {
         "transcript": "hello",
         "questions": [
@@ -99,10 +97,9 @@ def test_sync_session_upserts_and_sample():
         session,
         owner_id="u",
         profile_id="b",
-        answer_repository=answers,
-        sample_repository=samples,
-        transcript="hello\n\nQ\nA",
+        corpus_service=corpus,
+        session_id="sess-1",
+        capture_mode="mini",
     )
     assert count == 1
-    answers.upsert_answers.assert_called_once()
-    samples.create_sample.assert_called_once()
+    corpus.append_from_session.assert_called_once()

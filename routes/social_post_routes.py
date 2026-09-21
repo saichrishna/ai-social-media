@@ -13,6 +13,7 @@ from services.supabase_storage_service import (
 from workflows.social_content_workflow import SocialContentWorkflow
 from repositories.brand_profile_repository import BrandProfileRepository
 from models.brand_profile import BrandProfile
+from services.brand_dna_service import BrandDnaService
 router = APIRouter(
     prefix="/api/social-posts",
     tags=["Social Posts"]
@@ -26,6 +27,8 @@ supabase_storage = SupabaseStorageService()
 social_content_workflow = SocialContentWorkflow()
 
 brand_repository = BrandProfileRepository()
+
+brand_dna_service = BrandDnaService()
 
 class SchedulePostRequest(BaseModel):
 
@@ -317,13 +320,29 @@ async def regenerate_post(post_id: str):
                 detail="Brand profile not found for this user"
             )
 
+        profile_row = brand_data[0]
         brand_profile = BrandProfile(
-            **brand_data[0]
+            **profile_row
+        )
+
+        platform = (post.get("platform") or "instagram").strip().lower()
+        regen_topic = (
+            post.get("topic")
+            or post.get("caption")
+            or ""
+        )
+        dna_context = brand_dna_service.build_generation_context(
+            profile_row,
+            brand_profile_id,
+            user_id,
+            platform,
+            topic=str(regen_topic),
         )
 
         result = await social_content_workflow.regenerate(
             post_id=post_id,
-            brand_profile=brand_profile
+            brand_profile=brand_profile,
+            brand_dna_context=dna_context,
         )
 
         return result

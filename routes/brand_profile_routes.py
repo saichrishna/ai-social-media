@@ -15,6 +15,7 @@ from repositories.interview_session_repository import (
 from services.interview_session_sync import (
     backfill_interview_answers_from_sessions,
 )
+from services.corpus_service import CorpusService
 
 from models.brand_profile_request import (
     BrandProfileRequest
@@ -31,7 +32,6 @@ from utils.promise_completeness import (
 )
 from services.brand_setup_status import (
     enrich_profile_with_setup,
-    material_counts_from_rows,
 )
 
 
@@ -51,8 +51,10 @@ interview_answer_repository = (
 
 interview_session_repository = InterviewSessionRepository()
 
+corpus_service = CorpusService()
 
-VOICE_SAMPLE_SOURCES = {"paste", "audio"}
+
+VOICE_SAMPLE_SOURCES = {"paste", "audio", "studio_edit"}
 
 INTERVIEW_ANSWER_SOURCES = {"type", "audio"}
 
@@ -172,19 +174,30 @@ async def get_user_brand_profiles(
         .get_user_profiles(user_id)
     )
 
-    samples = voice_sample_repository.list_content_by_user(user_id)
-    answers = interview_answer_repository.list_content_by_user(user_id)
-    material_by_profile = material_counts_from_rows(samples, answers)
+    material_by_profile = corpus_service.repository.list_counts_by_user(
+        user_id,
+    )
+
+    enriched_profiles = []
+    for profile in result:
+        profile_id = str(profile.get("id"))
+        count = material_by_profile.get(profile_id, 0)
+        if count == 0:
+            corpus_service.backfill_from_legacy_if_empty(
+                profile_id,
+                user_id,
+            )
+            count = corpus_service.material_count(profile_id, user_id)
+        enriched_profiles.append(
+            enrich_profile_with_setup(
+                _with_promise_warnings(profile),
+                count,
+            )
+        )
 
     return {
         "success": True,
-        "brand_profiles": [
-            enrich_profile_with_setup(
-                _with_promise_warnings(profile),
-                material_by_profile.get(str(profile.get("id")), 0),
-            )
-            for profile in result
-        ]
+        "brand_profiles": enriched_profiles,
     }
 
 
@@ -320,17 +333,21 @@ async def add_voice_sample(
 
     _reject_empty(sample.content, "content")
 
-    result = (
-        voice_sample_repository
-        .create_sample({
-            "user_id": owner_id,
-            "brand_profile_id": profile_id,
-            "source": sample.source,
-            "content": sample.content
-        })
+    if sample.source == "paste":
+        corpus_source = "paste"
+    elif sample.source == "studio_edit":
+        corpus_source = "studio_edit"
+    else:
+        corpus_source = "legacy_transcript"
+
+    corpus_row = corpus_service.append_paste(
+        owner_id=owner_id,
+        profile_id=profile_id,
+        content=sample.content,
+        source=corpus_source,
     )
 
-    if not result:
+    if not corpus_row:
         raise HTTPException(
             status_code=500,
             detail="Failed to save voice sample"
@@ -338,7 +355,15 @@ async def add_voice_sample(
 
     return {
         "success": True,
-        "voice_sample": result[0]
+        "voice_sample": {
+            "id": corpus_row.get("id"),
+            "user_id": owner_id,
+            "brand_profile_id": profile_id,
+            "source": sample.source,
+            "content": corpus_row.get("content"),
+            "created_at": corpus_row.get("created_at"),
+        },
+        "corpus_item": corpus_row,
     }
 
 
@@ -354,17 +379,28 @@ async def list_voice_samples(
 
     _require_owned_profile(profile_id, user_id)
 
-    result = (
-        voice_sample_repository
-        .get_samples(
-            brand_profile_id=profile_id,
-            user_id=user_id
-        )
-    )
+    corpus_service.backfill_from_legacy_if_empty(profile_id, user_id)
+    items = corpus_service.list_items(profile_id, user_id)
+
+    legacy_samples = [
+        {
+            "id": item.get("id"),
+            "user_id": item.get("user_id"),
+            "brand_profile_id": item.get("brand_profile_id"),
+            "source": (
+                "paste"
+                if item.get("source") in {"paste", "type", "studio_edit"}
+                else "audio"
+            ),
+            "content": item.get("content"),
+            "created_at": item.get("created_at"),
+        }
+        for item in items
+    ]
 
     return {
         "success": True,
-        "voice_samples": result
+        "voice_samples": legacy_samples,
     }
 
 
@@ -414,14 +450,32 @@ async def save_interview_answers(
             "source": answer.source
         })
 
-    result = (
-        interview_answer_repository
-        .upsert_answers(rows)
-    )
+    inserted = []
+    for row in rows:
+        item = corpus_service.append_paste(
+            owner_id=owner_id,
+            profile_id=profile_id,
+            content=row["answer_text"],
+            source="type",
+            theme=row["question_key"],
+            question_text=row["question_text"],
+        )
+        if item:
+            inserted.append({
+                "id": item.get("id"),
+                "user_id": owner_id,
+                "brand_profile_id": profile_id,
+                "question_key": row["question_key"],
+                "question_text": row["question_text"],
+                "answer_text": row["answer_text"],
+                "source": row["source"],
+                "created_at": item.get("created_at"),
+                "updated_at": item.get("created_at"),
+            })
 
     return {
         "success": True,
-        "interview_answers": result
+        "interview_answers": inserted,
     }
 
 
@@ -437,15 +491,30 @@ async def list_interview_answers(
 
     _require_owned_profile(profile_id, user_id)
 
-    result = (
-        interview_answer_repository
-        .get_answers(
-            brand_profile_id=profile_id,
-            user_id=user_id
-        )
-    )
+    corpus_service.backfill_from_legacy_if_empty(profile_id, user_id)
+    items = corpus_service.list_items(profile_id, user_id)
 
-    if not result:
+    legacy_answers = [
+        {
+            "id": item.get("id"),
+            "user_id": item.get("user_id"),
+            "brand_profile_id": item.get("brand_profile_id"),
+            "question_key": item.get("theme") or "",
+            "question_text": item.get("question_text") or "",
+            "answer_text": item.get("content"),
+            "source": (
+                "audio"
+                if item.get("source") in {"full_talk", "mini_talk", "legacy_transcript"}
+                else "type"
+            ),
+            "created_at": item.get("created_at"),
+            "updated_at": item.get("created_at"),
+        }
+        for item in items
+        if item.get("theme")
+    ]
+
+    if not legacy_answers:
         sessions = interview_session_repository.list_recent_sessions(
             profile_id,
             user_id,
@@ -454,15 +523,47 @@ async def list_interview_answers(
             brand_profile_id=profile_id,
             user_id=user_id,
             sessions=sessions,
-            answer_repository=interview_answer_repository,
-            sample_repository=voice_sample_repository,
         )
-        result = interview_answer_repository.get_answers(
-            brand_profile_id=profile_id,
-            user_id=user_id,
-        )
+        items = corpus_service.list_items(profile_id, user_id)
+        legacy_answers = [
+            {
+                "id": item.get("id"),
+                "user_id": item.get("user_id"),
+                "brand_profile_id": item.get("brand_profile_id"),
+                "question_key": item.get("theme") or "",
+                "question_text": item.get("question_text") or "",
+                "answer_text": item.get("content"),
+                "source": "type",
+                "created_at": item.get("created_at"),
+                "updated_at": item.get("created_at"),
+            }
+            for item in items
+            if item.get("theme")
+        ]
 
     return {
         "success": True,
-        "interview_answers": result
+        "interview_answers": legacy_answers,
+    }
+
+
+# -----------------------------------
+# LIST CORPUS ITEMS (source of truth)
+# -----------------------------------
+
+@router.get("/{profile_id}/corpus-items")
+async def list_corpus_items(
+    profile_id: str,
+    user_id: str,
+):
+
+    _require_owned_profile(profile_id, user_id)
+
+    corpus_service.backfill_from_legacy_if_empty(profile_id, user_id)
+    items = corpus_service.list_items(profile_id, user_id)
+
+    return {
+        "success": True,
+        "corpus_items": items,
+        "material_count": len(items),
     }
